@@ -1,76 +1,45 @@
-# More info on Python, GitHub Actions, and Azure App Service:
-# https://aka.ms/python-webapps-actions
-
-name: Build and deploy Python app to Azure Web App - studentssperformance3
+name: Build and Push Docker Image to Amazon ECR
 
 on:
   push:
     branches:
       - main
+
   workflow_dispatch:
 
 permissions:
+  id-token: write
   contents: read
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout source code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ap-south-1
 
-      - name: Create virtual environment
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
         run: |
-          python -m venv venv
-          source venv/bin/activate
-          python -m pip install --upgrade pip
+          docker build -t mlproject .
 
-      - name: Install dependencies
+      - name: Tag Docker image
         run: |
-          source venv/bin/activate
-          pip install -r requirements.txt
+          docker tag mlproject:latest \
+            341405829219.dkr.ecr.ap-south-1.amazonaws.com/mlproject:latest
 
-      - name: Upload application artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-app
-          path: |
-            .
-            !venv/
-            !.git/
-            !.github/
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-
-    environment:
-      name: Production
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-
-    steps:
-      - name: Download application artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: python-app
-          path: .
-
-      - name: Azure Login
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: studentssperformance3
-          slot-name: Production
-          package: .
+      - name: Push Docker image to Amazon ECR
+        run: |
+          docker push \
+            341405829219.dkr.ecr.ap-south-1.amazonaws.com/mlproject:latest
